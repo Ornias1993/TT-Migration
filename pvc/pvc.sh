@@ -37,7 +37,7 @@ rename_original_pvcs() {
         mount_path=$(echo "${line}" | awk '{print $3}')
         old_pvc_name="$pvc_parent_path/${volume_name}"
         new_pvc_name="$migration_path/${pvc_name}"
-        if zfs rename "${old_pvc_name}" "${new_pvc_name}"; then 
+        if /usr/sbin/zfs rename "${old_pvc_name}" "${new_pvc_name}"; then 
             echo -e "${green}Renamed ${blue}${old_pvc_name}${reset} to ${blue}${new_pvc_name}${reset}"
             echo "$pvc_name $volume_name $mount_path" >> "$mount_path_file"
         else
@@ -102,7 +102,7 @@ match_pvcs_with_mountpoints() {
 
             if [ "$new_mountpath" == "$original_mountpath" ]; then
                 new_volume=$(echo "${new_pvc_info}" | awk '{print $2}')
-                if zfs rename "$migration_path/${original_pvc_name}" "$pvc_parent_path/${new_volume}"; then
+                if /usr/sbin/zfs rename "$migration_path/${original_pvc_name}" "$pvc_parent_path/${new_volume}"; then
                     echo -e "${green}Renamed ${blue}$migration_path/${original_pvc_name}${reset} to ${blue}$pvc_parent_path/${new_volume}${reset}"
                     echo -e "${green}Matched by mount point:${green}"
                     echo -e "${blue}${original_pvc_name}${reset} -> ${blue}${new_pvc_name}${reset}"
@@ -131,7 +131,7 @@ match_remaining_single_pvc_pair() {
         new_pvc_info="${pvc_info[0]}"
         new_pvc_name=$(echo "${new_pvc_info}" | awk '{print $1}')
         new_volume=$(echo "${new_pvc_info}" | awk '{print $2}')
-        if zfs rename "$migration_path/${original_pvc_name}" "$pvc_parent_path/${new_volume}"; then
+        if /usr/sbin/zfs rename "$migration_path/${original_pvc_name}" "$pvc_parent_path/${new_volume}"; then
             echo -e "${green}Renamed ${blue}$migration_path/${original_pvc_name}${reset} to ${blue}$pvc_parent_path/${new_volume}${reset}"
             echo -e "${green}Single pair left:${green}"
             echo -e "${blue}${original_pvc_name}${reset} -> ${blue}${new_pvc_name}${reset}"
@@ -147,7 +147,7 @@ match_remaining_pvcs_by_name() {
     for original_pvc_line in "${original_pvc_info[@]}"; do
         original_pvc_name=$(echo "${original_pvc_line}" | awk '{print $1}')
         most_similar_volume=$(find_most_similar_pvc "$original_pvc_name")
-        if zfs rename "$migration_path/${original_pvc_name}" "$pvc_parent_path/${most_similar_volume}"; then
+        if /usr/sbin/zfs rename "$migration_path/${original_pvc_name}" "$pvc_parent_path/${most_similar_volume}"; then
             echo -e "${green}Renamed ${blue}$migration_path/${original_pvc_name}${reset} to ${blue}$pvc_parent_path/${most_similar_volume}${reset}"
             echo -e "${green}Matched by name similarity${green}"
             echo
@@ -185,7 +185,7 @@ destroy_new_apps_pvcs() {
         max_attempts=2
 
         while ! $success && [ $attempt_count -lt $max_attempts ]; do
-            if output=$(zfs destroy "${to_delete}"); then
+            if output=$(/usr/sbin/zfs destroy "${to_delete}"); then
                 echo -e "${green}Destroyed ${blue}${to_delete}${reset}"
                 success=true
             else
@@ -211,7 +211,7 @@ get_pvc_parent_path() {
     local volume_name
     volume_name=$(echo "$pvc_info" | awk '{print $2}' | head -n 1)
 
-    pvc_path=$(zfs list -r "${ix_apps_pool}/ix-applications" -o name -H | grep "${volume_name}")
+    pvc_path=$(/usr/sbin/zfs list -r "${ix_apps_pool}/ix-applications" -o name -H | grep "${volume_name}")
 
     if [ -z "${pvc_path}" ]; then
         echo -e "${red}PVC not found${reset}"
@@ -257,16 +257,16 @@ cleanup_datasets() {
     # List child datasets
     while IFS= read -r child_dataset; do
         # Check if a child dataset has grandchild datasets
-        if ! zfs list -H -d 1 -o name -t filesystem -r "$child_dataset" 2>/dev/null | grep -q -v "^${child_dataset}$"; then
+        if ! /usr/sbin/zfs list -H -d 1 -o name -t filesystem -r "$child_dataset" 2>/dev/null | grep -q -v "^${child_dataset}$"; then
             datasets_to_remove+=("$child_dataset")
         fi
-    done < <(zfs list -H -d 1 -o name -t filesystem -r "$base_path" 2>/dev/null | grep -v "^${base_name}$")
+    done < <(/usr/sbin/zfs list -H -d 1 -o name -t filesystem -r "$base_path" 2>/dev/null | grep -v "^${base_name}$")
 
     # Remove child datasets without grandchild datasets
     if [ ${#datasets_to_remove[@]} -gt 0 ]; then
         echo -e "${bold}Cleaning up...${reset}"
         for dataset in "${datasets_to_remove[@]}"; do
-            if zfs destroy "$dataset"; then
+            if /usr/sbin/zfs destroy "$dataset"; then
                 echo -e "${green}Removed empty dataset: ${blue}$dataset${reset}"
             else
                 echo -e "${red}Error: Failed to remove empty dataset: ${blue}$dataset${reset}"
@@ -276,9 +276,9 @@ cleanup_datasets() {
     fi
 
     # Remove base_path dataset if it has no child datasets
-    if ! zfs list -H -d 1 -o name -t filesystem -r "$base_path" 2>/dev/null | grep -q -v "^${base_name}$"; then
+    if ! /usr/sbin/zfs list -H -d 1 -o name -t filesystem -r "$base_path" 2>/dev/null | grep -q -v "^${base_name}$"; then
         echo -e "Removing base path dataset as it has no child datasets..."
-        if zfs destroy -r "$base_path"; then
+        if /usr/sbin/zfs destroy -r "$base_path"; then
             echo -e "${green}Removed base path dataset: ${blue}$base_path${reset}"
         else
             echo -e "${red}Error: Failed to remove base path dataset: ${blue}$base_path${reset}"
